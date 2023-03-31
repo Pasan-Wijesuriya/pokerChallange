@@ -1,6 +1,15 @@
 import Foundation
 
-// Define card and hand structures
+//This is a Swift program that simulates a game of poker. It defines several structures and enums to represent a deck of cards, a hand of cards, and the rank of a hand.
+
+//The Suit and Rank enums represent the suits and ranks of the cards, respectively. The Card struct has two properties: the suit and the rank of the card.
+
+//The Hand struct represents a hand of cards, which is an array of Card objects. It has a computed property called rankValue, which calculates the rank of the hand based on its contents. The compare(to:) method can be used to compare two hands and determine the winner.
+
+//The Result enum represents the outcome of a game, and has three cases: player1Wins, player2Wins, and tie.
+
+//The main part of the program reads in a file called "poker-hands.txt", which contains a list of hands of cards, one per line. It then iterates over the list of hands, compares them using the compare(to:) method, and updates the win counts for each player accordingly. Finally, it prints out the number of wins for each player.
+
 enum Suit: String {
     case diamonds = "D", hearts = "H", clubs = "C", spades = "S"
 }
@@ -15,14 +24,15 @@ struct Card {
 }
 
 struct Hand {
-    let cards: [Card]
+    private let cards: [Card]
 
     init(_ cardStrings: [String]) {
-        self.cards = cardStrings.compactMap { cardString -> Card? in
+        cards = cardStrings.compactMap { cardString -> Card? in
             guard let suitString = cardString.last,
-                  let rankString = Optional(cardString.dropLast().description),
                   let suit = Suit(rawValue: String(suitString)),
-                  let rank = Rank(rawValue: Int(rankString)!)
+                  let rankString = cardString.dropLast().description,
+                  let rankValue = Int(rankString),
+                  let rank = Rank(rawValue: rankValue)
             else {
                 return nil
             }
@@ -62,8 +72,8 @@ struct Hand {
         }
     }
 
-    func isFourOfAKind(counts: [Int: Int]) -> Bool {
-        return counts.values.contains(4)
+    private func isFourOfAKind(counts: [Int: Int]) -> Bool {
+        counts.values.contains(4)
     }
 }
 
@@ -73,53 +83,55 @@ enum Result {
     case tie(highestCard: Rank)
 }
 
-func compare(_ hand1: Hand, _ hand2: Hand) -> Result {
-    let rank1 = hand1.rankValue
-    let rank2 = hand2.rankValue
+extension Hand {
+    var highestRank: Rank {
+        cards.max { $0.rank.rawValue < $1.rank.rawValue }?.rank ?? .two
+    }
 
-    if rank1 != rank2 {
-        return rank1 > rank2 ? .player1Wins(highestCard: hand1.cards[0].rank) : .player2Wins(highestCard: hand2.cards[0].rank)
-    } else {
-        let values1 = hand1.cards.map { $0.rank.rawValue }.sorted(by: >)
-        let values2 = hand2.cards.map { $0.rank.rawValue }.sorted(by: >)
-        
-        switch rank1 {
-        case 10: // Royal flush
-            return .tie(highestCard: Rank.ace)
-        case 9, 5: // Straight flush or straight
-            if values1[0] != values2[0] {
-                return values1[0] > values2[0] ? .player1Wins(highestCard: hand1.cards[0].rank) : .player2Wins(highestCard: hand2.cards[0].rank)
-            } else {
-                return .tie(highestCard: hand1.cards[0].rank)
-            }
-        case 8, 4, 3, 2, 1: // Four of a kind, three of a kind, two pairs, pair, or high card
-            let counts1 = Dictionary(grouping: values1, by: { $0 }).mapValues { $0.count }
-            let counts2 = Dictionary(grouping: values2, by: { $0 }).mapValues { $0.count }
-            let highestCount1 = counts1.values.max() ?? 0
-            let highestCount2 = counts2.values.max() ?? 0
-            let highestValue1 = counts1.filter { $0.value == highestCount1 }.keys.max() ?? 0
-            let highestValue2 = counts2.filter { $0.value == highestCount2 }.keys.max() ?? 0
-
-            if highestCount1 != highestCount2 {
-                return highestCount1 > highestCount2 ? .player1Wins(highestCard: Rank(rawValue: highestValue1)!) : .player2Wins(highestCard: Rank(rawValue: highestValue2)!)
-            } else if highestValue1 != highestValue2 {
-                return highestValue1 > highestValue2 ? .player1Wins(highestCard: Rank(rawValue: highestValue1)!) : .player2Wins(highestCard: Rank(rawValue: highestValue2)!)
-            } else {
-                let otherValues1 = values1.filter { $0 != highestValue1 }
-                let otherValues2 = values2.filter { $0 != highestValue2 }
-                for i in 0..<otherValues1.count {
-                    if otherValues1[i] != otherValues2[i] {
-                        return otherValues1[i] > otherValues2[i] ? .player1Wins(highestCard: Rank(rawValue: otherValues1[i])!) : .player2Wins(highestCard: Rank(rawValue: otherValues2[i])!)
-                    }
-                }
-                return .tie(highestCard: Rank.two)
-            }
-        default:
-            print("done")
-            return .tie(highestCard: Rank.two)
+    func valuesSortedByCount() -> [(value: Int, count: Int)] {
+        var dictionary = [Rank: Int]()
+        cards.forEach { card in
+            dictionary[card.rank, default: 0] += 1
         }
+        return dictionary.map { ($0.value.rawValue, $0.value.count) }
+            .sorted { $0.count > $1.count || ($0.count == $1.count && $0.value > $1.value) }
+    }
+
+    func compare(to otherHand: Hand) -> ComparisonResult {
+        let selfValues = valuesSortedByCount()
+        let otherValues = otherHand.valuesSortedByCount()
+
+        // Compare based on hand rank
+        let selfHandRank = rank
+        let otherHandRank = otherHand.rank
+        if selfHandRank != otherHandRank {
+            return selfHandRank.rawValue > otherHandRank.rawValue ? .win : .loss
+        }
+
+        // Compare based on highest rank in the hand
+        let selfHighestRank = highestRank
+        let otherHighestRank = otherHand.highestRank
+        if selfHighestRank != otherHighestRank {
+            return selfHighestRank.rawValue > otherHighestRank.rawValue ? .win : .loss
+        }
+
+        // Compare based on the values sorted by count
+        for i in 0..<selfValues.count {
+            let selfValue = selfValues[i]
+            let otherValue = otherValues[i]
+
+            if selfValue.count != otherValue.count {
+                return selfValue.count > otherValue.count ? .win : .loss
+            } else if selfValue.value != otherValue.value {
+                return selfValue.value > otherValue.value ? .win : .loss
+            }
+        }
+
+        // If all else fails, it's a tie
+        return .tie
     }
 }
+
 
 
 var player1Wins = 0
